@@ -1,20 +1,30 @@
-__kernel void CylinderKernel(__global const real *qx, global const real *qy, __global real *_ptvalue, const real sub,
-const real rr, const real h, const real scale, const real radius_weight, const real length_weight,
-const real theta_weight, const real phi_weight, const real cyl_theta,
-const real cyl_phi, const int count, const int size)
+__kernel void CylinderKernel(__global const real *qx, global const real *qy, __global real *_ptvalue, __global const real *zip,
+const real sub, const real scale, const int count, const int size, const int N)
 {
-	// qq is the q-value for the calculation (1/A)
-	// rr is the radius of the cylinder (A)
-	// h is the -LENGTH of the cylinder = L (A)
+    real weight[N] = {};
+    real radius[N] = {};
+    real length[N] = {};
+    real cyl_theta[N] = {};
+    real cyl_phi[N] = {};
+
+    for(k=0;k<N;k++){
+        weight[k] = zip[k];
+        radius[k] = zip[k+N];
+        length[k] = zip[k+2*N];
+        cyl_theta[k] = zip[k+3*N];
+        cyl_phi[k] = zip[k+4*N];
+    }
+
     int i = get_global_id(0);
+    int j = get_global_id(1);
 
     if(i < count)
     {
         real qq = sqrt(qx[i]*qx[i]+qy[i]*qy[i]);
 
         real pi = 4.0*atan(1.0);
-        real theta = cyl_theta*pi/180.0;
-        real phi = cyl_phi*pi/180.0;
+        real theta = cyl_theta[j]*pi/180.0;
+        real phi = cyl_phi[j]*pi/180.0;
 
         real cyl_x = cos(theta)*cos(phi);
         real cyl_y = sin(theta);
@@ -24,13 +34,13 @@ const real cyl_phi, const int count, const int size)
         if(alpha == 0.0){
             alpha = 1.0e-26;
         }
-        real besarg = qq*rr*sin(alpha);
-        real siarg = qq*h/2*cos(alpha);
+        real besarg = qq*radius[j]*sin(alpha);
+        real siarg = qq*length[j]/2*cos(alpha);
         real be=0.0; real si=0.0;
 
         real bj = NR_BessJ1(besarg);
 
-        real d1 = qq*rr*sin(alpha);
+        real d1 = qq*radius[j]*sin(alpha);
 
         if (besarg == 0.0){
             be = sin(alpha);
@@ -46,12 +56,14 @@ const real cyl_phi, const int count, const int size)
         }
 
         real form = be*si/sin(alpha);
-        real answer = sub*sub*form*acos(-1.0)*rr*rr*h*1.0e8*scale;
+        real answer = sub*sub*form*acos(-1.0)*radius[j]*radius[j]*length[j]*1.0e8*scale;
 
-        _ptvalue[i] = radius_weight*length_weight*theta_weight*phi_weight*answer*pow(rr,2)*h;
+        real ret = radius_weight*length_weight*theta_weight*phi_weight*answer*pow(radius[j],2)*length[j];
         if (size>1) {
-            _ptvalue[i] *= fabs(cos(cyl_theta*pi/180.0));
+            ret *= fabs(cos(cyl_theta[j]*pi/180.0));
         }
+        //_ptvalue[i] = ret;  // return ptvalue for each p and accumulate on host
+        _ptvalue[i] += ret;   // accumulate in kernel, initializing ptvalue before loop and return at end of loop
     }
 }
 

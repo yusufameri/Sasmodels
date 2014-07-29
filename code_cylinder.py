@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import math
 import pyopencl as cl
 from weights import GaussianDispersion
 from sasmodel import card
+from time import time
 
 def set_precision(src, qx, qy, dtype):
     qx = np.ascontiguousarray(qx, dtype=dtype)
@@ -45,14 +45,14 @@ class GpuCylinder(object):
 
     def eval(self, pars):
 
-        _ctx,queue = card()
+        ctx,queue = card()
         radius, length, cyl_theta, cyl_phi = \
             [GaussianDispersion(int(pars[base+'_pd_n']), pars[base+'_pd'], pars[base+'_pd_nsigma'])
              for base in GpuCylinder.PD_PARS]
 
         #Get the weights for each
-        radius.value, radius.weight = radius.get_weights(pars['radius'], 0, 1000, True)
-        length.value, length.weight = length.get_weights(pars['length'], 0, 1000, True)
+        radius.value, radius.weight = radius.get_weights(pars['radius'], 0, 10000, True)
+        length.value, length.weight = length.get_weights(pars['length'], 0, 10000, True)
         cyl_theta.value, cyl_theta.weight = cyl_theta.get_weights(pars['cyl_theta'], -90, 180, False)
         cyl_phi.value, cyl_phi.weight = cyl_phi.get_weights(pars['cyl_phi'], -90, 180, False)
 
@@ -61,63 +61,47 @@ class GpuCylinder(object):
         size = len(cyl_theta.weight)
         sub = pars['sldCyl'] - pars['sldSolv']
 
+        start_time = time()
+        kernel_runs_count = 0
+
+        N = np.prod([len(V) for V in radius.weight, length.weight, cyl_theta.weight, cyl_phi.weight])
+        w, uA, uB, uC, uD = [np.empty(N, dtype="float") for _ in range(5)]
+        j = 0
+        for a,wa in zip(radius.value, radius.weight):
+            for b,wb in zip(length.value, length.weight):
+                for c,wc in zip(cyl_theta.value, cyl_theta.weight):
+                    for d,wd in zip(cyl_phi.value, cyl_phi.weight):
+                        uA[j] = a
+                        uB[j] = b
+                        uC[j] = c
+                        uD[j] = d
+                        w[j] = wa*wb*wc*wd
+                        j+=1
+                        vol += wa*wb*pow(a, 2)*b
+                        norm_vol += wa*wb
+                        norm += w[j]
+                        
+        ZIP = np.hstack([w, uA, uB, uC, uD])
+        print " HALLA AT YO DOLLA"
+        print ZIP
+        zip_b = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ZIP)
+
         real = np.float32 if self.qx.dtype == np.dtype('float32') else np.float64
         #Loop over radius, length, theta, phi weight points
-        for i in xrange(len(radius.weight)):
-            for j in xrange(len(length.weight)):
-                for k in xrange(len(cyl_theta.weight)):
-                    for l in xrange(len(cyl_phi.weight)):
-                        self.prg.CylinderKernel(queue, self.qx.shape, None, self.qx_b, self.qy_b, self.res_b, real(sub),
-                                           real(radius.value[i]), real(length.value[j]), real(pars['scale']),
-                                           real(radius.weight[i]), real(length.weight[j]), real(cyl_theta.weight[k]),
-                                           real(cyl_phi.weight[l]), real(cyl_theta.value[k]), real(cyl_phi.value[l]),
-                                           np.uint32(self.qx.size), np.uint32(size))
-                        cl.enqueue_copy(queue, self.res, self.res_b)
-                        sum += self.res
-                        vol += radius.weight[i]*length.weight[j]*pow(radius.value[i], 2)*length.value[j]
-                        norm_vol += radius.weight[i]*length.weight[j]
-                        norm += radius.weight[i]*length.weight[j]*cyl_theta.weight[k]*cyl_phi.weight[l]
 
-        if size > 1:
-            norm /= math.asin(1.0)
+        self.prg.CylinderKernel(queue, self.qx.shape, None, self.qx_b, self.qy_b, self.res_b, zip_b, real(sub),
+                           real(pars['scale']), np.uint32(self.qx.size), np.uint32(size), np.uint32(N))
+        queue.finish()
+        cl.enqueue_copy(queue, self.res, self.res_b)
+        kernel_runs_count +=1
+
+        run_time = time() - start_time
+        print run_time, "seconds it TOOK!!!!!!!!!!!! and the kernel ran", kernel_runs_count,"times!"
+
         if vol != 0.0 and norm_vol != 0.0:
-            sum *= norm_vol/vol
+            self.res *= norm_vol/vol
 
-        return sum/norm+pars['background']
-
-def demo():
-    from time import time
-    import matplotlib.pyplot as plt
-
-    #create qx and qy evenly spaces
-    qx = np.linspace(-.02, .02, 128)
-    qy = np.linspace(-.02, .02, 128)
-    qx, qy = np.meshgrid(qx, qy)
-
-    #saved shape of qx
-    r_shape = qx.shape
-
-    #reshape for calculation; resize as float32
-    qx = qx.flatten()
-    qy = qy.flatten()
-
-    pars = CylinderParameters(scale=1, radius=64.1, length=266.96, sldCyl=.291e-6, sldSolv=5.77e-6, background=0,
-                              cyl_theta=0, cyl_phi=0)
-    t = time()
-    result = GpuCylinder(qx, qy)
-    result.x = result.cylinder_fit(pars, r_n=10, t_n=10, l_n=10, p_n=10, r_w=.1, t_w=.1, l_w=.1, p_w=.1, sigma=3)
-    result.x = np.reshape(result.x, r_shape)
-    tt = time()
-
-    print("Time taken: %f" % (tt - t))
-
-    plt.pcolormesh(result.x)
-    plt.show()
-
-
-if __name__=="__main__":
-    demo()
-
+        return self.res/norm+pars['background']
 
 
 
