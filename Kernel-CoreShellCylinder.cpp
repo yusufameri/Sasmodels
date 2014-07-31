@@ -60,7 +60,6 @@ const int size, const int total)
         if (size>1) {
         _ptvalue[i] *= fabs(cos(axis_theta*pi/180.0));
         }
-
     }
 }
 

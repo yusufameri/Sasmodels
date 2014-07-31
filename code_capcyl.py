@@ -13,8 +13,8 @@ def set_precision(src, qx, qy, dtype):
     qy = np.ascontiguousarray(qy, dtype=dtype)
     if np.dtype(dtype) == np.dtype('float32'):
         header = """\
-#define real float
-"""
+                    #define real float
+                 """
     else:
         header = """\
 #pragma OPENCL EXTENSION cl_khr_fp64: enable

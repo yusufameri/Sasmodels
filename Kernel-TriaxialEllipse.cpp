@@ -1,7 +1,27 @@
-__kernel void TriaxialEllipseKernel(__global const real *qx, __global const real *qy, __global real *_ptvalue,
-const real sub, const real scale, const real axisA, const real axisB, const real axisC, const real axis_phi,
-const real axis_theta, const real axis_psi, const real axisA_weight, const real axisB_weight, const real axisC_weight,
-const real psi_weight, const real phi_weight, const real theta_weight, const int total, const int size)
+
+__kernel void TriaxialEllipseKernel(__global const real *qx,
+                                    __global const real *qy,
+                                    __global real *_ptvalue,
+
+                                    const real sub,
+                                    const real scale,
+                                    const real axisA,
+                                    const real axisB,
+                                    const real axisC,
+
+                                    const real axis_phi,
+                                    const real axis_theta,
+                                    const real axis_psi,
+
+                                    const real axisA_weight,
+                                    const real axisB_weight,
+                                    const real axisC_weight,
+                                    const real psi_weight,
+                                    const real phi_weight,
+                                    const real theta_weight,
+
+                                    const int total,
+                                    const int size)
 {
     int i = get_global_id(0);
     if(i < total)

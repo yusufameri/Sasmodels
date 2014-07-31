@@ -47,7 +47,7 @@ def cyl(N=1):
     set_beam_stop(data, 0.004)
 
     pars = dict(
-        scale=1, radius=64.1, length=266.96, sldCyl=.291e-6, sldSolv=5.77e-6, background=0,
+        scale=0.08, radius=64.1, length=266.96, sldCyl=.291e-6, sldSolv=5.77e-6, background=0,
         cyl_theta=0, cyl_phi=0, radius_pd=0.1, radius_pd_n=10, radius_pd_nsigma=3,length_pd=0.1,
         length_pd_n=5, length_pd_nsigma=3, cyl_theta_pd=0.1, cyl_theta_pd_n=5, cyl_theta_pd_nsigma=3,
         cyl_phi_pd=0.1, cyl_phi_pd_n=10, cyl_phi_pd_nsigma=3,
@@ -60,9 +60,10 @@ def cyl(N=1):
     cpu_time = toc()*1000./N
 
     from code_cylinder import GpuCylinder
-    model = SasModel(data, GpuCylinder, dtype='f', **pars)
+    model = SasModel(data, GpuCylinder, dtype='float', **pars)
     tic()
     for i in range(N):
+        model.update()
         gpu = model.theory()
     gpu_time = toc()*1000./N
 
@@ -115,7 +116,8 @@ def ellipse(N=1):
 
 
 if __name__ == "__main__":
-    ellipse()
+    cyl(1)
+    #ellipse(1)
 
 
 

@@ -80,6 +80,10 @@ class SasModel(object):
         pars.update((base+'_pd_nsigma', 3) for base in model.PD_PARS)
         pars.update(kw)
         self._parameters = dict((k, Parameter.default(v, name=k)) for k, v in pars.items())
+        self._cache = {}
+
+    def update(self):
+        self._cache = {}
 
     def numpoints(self):
         return len(self.iq)
@@ -88,7 +92,10 @@ class SasModel(object):
         return self._parameters
 
     def __getattr__(self, par):
-        return self._parameters[par]
+        try:
+            return self._parameters[par]
+        except:
+            raise AttributeError("%r is not a parameter or attribute"%par) 
 
     def __setattr__(self, par, val):
         if par in self._parameters:
@@ -97,9 +104,10 @@ class SasModel(object):
             self.__dict__[par] = val
 
     def theory(self):
-        pars = dict((k,v.value) for k,v in self._parameters.items())
-        result = self.gpu.eval(pars)
-        return result
+        if 'theory' not in self._cache:
+            pars = dict((k,v.value) for k,v in self._parameters.items())
+            self._cache['theory'] = self.gpu.eval(pars)
+        return self._cache['theory']
 
     def residuals(self):
         #if np.any(self.err ==0): print "zeros in err"

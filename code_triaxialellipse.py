@@ -6,6 +6,7 @@ from math import asin
 import pyopencl as cl
 from weights import GaussianDispersion
 from sasmodel import card
+from time import time
 
 def set_precision(src, qx, qy, dtype):
     qx = np.ascontiguousarray(qx, dtype=dtype)
@@ -58,24 +59,70 @@ class GpuTriEllipse:
         size = len(theta.weight)
         sub = pars['sldEll'] - pars['sldSolv']
 
+        start_time = time()
+        run_time = 0
         real = np.float32 if self.qx.dtype == np.dtype('float32') else np.float64
+        print "Before kernel"
+        print "The len of axisA.weight is ",len(axisA.weight)
+        print "The len of axisB.weight is ",len(axisB.weight)
+        print "The len of axisC.weight is ",len(axisC.weight)
+        print "The len of theta.weight is ",len(theta.weight)
+        print "The len of phi.weight is ",len(phi.weight)
+        print "The len of psi.weight is ",len(psi.weight)
+        print
+        print
+        print "The axisA.weight is ",(axisA.weight)
+        print "The axisB.weight is ",(axisB.weight)
+        print "The axisC.weight is ",(axisC.weight)
+        print "The theta.weight is ",(theta.weight)
+        print "The phi.weight is ",(phi.weight)
+        print "The psi.weight is ",(psi.weight)
+
+
         for a in xrange(len(axisA.weight)):
             for b in xrange(len(axisB.weight)):
                 for c in xrange(len(axisC.weight)):
                     for t in xrange(len(theta.weight)):
                         for i in xrange(len(phi.weight)):
                             for s in xrange(len(psi.weight)):
-                                self.prg.TriaxialEllipseKernel(queue, self.qx.shape, None, self.qx_b, self.qy_b, self.res_b,
-                                            real(sub), real(pars['scale']), real(axisA.value[a]), real(axisB.value[b]),
-                                            real(axisC.value[c]), real(phi.value[i]), real(theta.value[t]), real(psi.value[s]),
-                                            real(axisA.weight[a]), real(axisB.weight[b]), real(axisC.weight[c]), real(psi.weight[s]),
-                                            real(phi.weight[i]), real(theta.weight[t]), np.uint32(self.qx.size), np.uint32(size))
+                                self.prg.TriaxialEllipseKernel(queue,
+                                                               self.qx.shape,
+                                                               None,
+                                                               self.qx_b,
+                                                               self.qy_b,
+                                                               self.res_b,
+
+                                                               real(sub),
+                                                               real(pars['scale']),
+                                                               real(axisA.value[a]),
+                                                               real(axisB.value[b]),
+                                                               real(axisC.value[c]),
+
+                                                               real(phi.value[i]),
+                                                               real(theta.value[t]),
+                                                               real(psi.value[s]),
+
+                                                               real(axisA.weight[a]),
+                                                               real(axisB.weight[b]),
+                                                               real(axisC.weight[c]),
+                                                               real(psi.weight[s]),
+                                                               real(phi.weight[i]),
+                                                               real(theta.weight[t]),
+
+                                                               np.uint32(self.qx.size),
+                                                               np.uint32(size))
+                                queue.finish()
+
+                                run_time = time() - start_time
+
                                 cl.enqueue_copy(queue, self.res, self.res_b)
                                 sum += self.res
 
                                 vol += axisA.weight[a]*axisB.weight[b]*axisC.weight[c]*axisA.value[a]*axisB.value[b]*axisC.value[c]
                                 norm_vol += axisA.weight[a]*axisB.weight[b]*axisC.weight[c]
                                 norm += axisA.weight[a]*axisB.weight[b]*axisC.weight[c]*theta.weight[t]*phi.weight[i]*psi.weight[s]
+
+        print run_time, "seconds it TOOK!!!!!!!!!!!!"
 
         if size > 1:
             norm /= asin(1.0)
@@ -84,45 +131,3 @@ class GpuTriEllipse:
             sum *= norm_vol/vol
 
         return sum/norm + pars['background']
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

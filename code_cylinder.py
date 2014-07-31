@@ -33,6 +33,13 @@ class GpuCylinder(object):
         #create context, queue, and build program
         ctx,_queue = card()
         src, qx, qy = set_precision(open('NR_BessJ1.cpp').read()+"\n"+open('Kernel-Cylinder.cpp').read(), qx, qy, dtype=dtype)
+        self.alignment = ctx.devices[0].min_data_type_align_size/np.dtype(dtype).itemsize
+        #self.workgroup = ctx.devices[0].max_work_group_size
+        self.workgroup_size = 64
+        print "workgroup size",self.workgroup_size,dtype
+        max_nloc = "#define MAX_NLOC %d\n"%self.workgroup_size
+        src = max_nloc + src
+
         self.prg = cl.Program(ctx, src).build()
         self.qx, self.qy = qx, qy
 
@@ -65,32 +72,44 @@ class GpuCylinder(object):
         kernel_runs_count = 0
 
         N = np.prod([len(V) for V in radius.weight, length.weight, cyl_theta.weight, cyl_phi.weight])
-        w, uA, uB, uC, uD = [np.empty(N, dtype="float") for _ in range(5)]
+        nloc=self.alignment
+        if N%nloc != 0:
+            N+= nloc - N%nloc
+
+        w = np.zeros(N, dtype="float")
+
+        uRadius, uLength, uCyl_Theta, uCyl_Phi = [np.empty(N, dtype="float") for _ in range(4)]
+
+        print "N is the product of the length of each of the following\nIn other words radius.weight*length.weight*cyl_theta.weight*cyl_phi.weight= ",N
+
         j = 0
         for a,wa in zip(radius.value, radius.weight):
             for b,wb in zip(length.value, length.weight):
                 for c,wc in zip(cyl_theta.value, cyl_theta.weight):
                     for d,wd in zip(cyl_phi.value, cyl_phi.weight):
-                        uA[j] = a
-                        uB[j] = b
-                        uC[j] = c
-                        uD[j] = d
+                        uRadius[j] = a
+                        uLength[j] = b
+                        uCyl_Theta[j] = c
+                        uCyl_Phi[j] = d
                         w[j] = wa*wb*wc*wd
-                        j+=1
                         vol += wa*wb*pow(a, 2)*b
                         norm_vol += wa*wb
                         norm += w[j]
-                        
-        ZIP = np.hstack([w, uA, uB, uC, uD])
-        print " HALLA AT YO DOLLA"
-        print ZIP
-        zip_b = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ZIP)
+                        j+=1
+
+        ZIP = np.hstack([w, uRadius, uLength, uCyl_Theta, uCyl_Phi])
+        d_zip = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ZIP)
 
         real = np.float32 if self.qx.dtype == np.dtype('float32') else np.float64
-        #Loop over radius, length, theta, phi weight points
 
-        self.prg.CylinderKernel(queue, self.qx.shape, None, self.qx_b, self.qy_b, self.res_b, zip_b, real(sub),
-                           real(pars['scale']), np.uint32(self.qx.size), np.uint32(size), np.uint32(N))
+        self.prg.CylinderKernel(queue, self.qx.shape, [self.workgroup_size],
+                                self.qx_b, self.qy_b, self.res_b,
+                                #np.uint32(self.qx.shape[0]),
+                                d_zip, real(sub),
+                                real(pars['scale']), np.uint32(size), np.uint32(N))
+       
+
+
         queue.finish()
         cl.enqueue_copy(queue, self.res, self.res_b)
         kernel_runs_count +=1
@@ -102,29 +121,3 @@ class GpuCylinder(object):
             self.res *= norm_vol/vol
 
         return self.res/norm+pars['background']
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

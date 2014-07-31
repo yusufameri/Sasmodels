@@ -76,6 +76,8 @@ class GpuEllipse(object):
                                         np.uint32(self.qx.size), np.uint32(len(axis_theta.weight)))
                         #copy result back from buffer
                         cl.enqueue_copy(queue, self.res, self.res_b)
+                        #print self.res
+                        #print len(self.res)
                         sum += self.res
                         vol += radius_a.weight[i]*radius_b.weight[j]*pow(radius_b.value[j], 2)*radius_a.value[i]
                         norm_vol += radius_a.weight[i]*radius_b.weight[j]
